@@ -12,6 +12,7 @@ const PORT = 5000;
 
 app.use(cors({
   origin: process.env.FRONT_END_URL,
+  methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true
 }));
 
@@ -25,3 +26,4 @@ app.use("/api", irysRoutes);
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
+
