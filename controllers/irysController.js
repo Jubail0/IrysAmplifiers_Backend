@@ -61,6 +61,7 @@ function verifySignature(address, signature, message, expectedUsername) {
 
 // Mindshare data
 export const getMindshare = async (req, res) => {
+ res.setHeader('Cache-Control', 'no-store');
   try {
     const { timeframe } = req.query;
     const apiUrl = `https://kaito.irys.xyz/api/community-mindshare?window=${timeframe}d`;
@@ -138,4 +139,5 @@ export default {
     fetchCardsData
 
 }
+
 
