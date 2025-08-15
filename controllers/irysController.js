@@ -95,6 +95,7 @@ export const getMindshare = async (req, res) => {
 };
 
 export const fetchCardsData = async (req, res) => {
+ res.setHeader('Cache-Control', 'no-store');
   try {
     const query = `
       query {
@@ -137,3 +138,4 @@ export default {
     fetchCardsData
 
 }
+
