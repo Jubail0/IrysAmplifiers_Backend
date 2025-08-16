@@ -41,7 +41,6 @@ function verifySignature(address, signature, message, expectedUsername) {
     if(userUploaded >= upload_limit) return res.status(403).json({error:"Maximum uploads reached" });
 
     const timestamp = new Date().toISOString()
-    jsonData.profile.uploadedBy = walletAddress;
     jsonData.profile.uploadedAt = timestamp;
 
     const receipt = await irys.upload(JSON.stringify(jsonData), {
@@ -139,5 +138,6 @@ export default {
     fetchCardsData
 
 }
+
 
 
