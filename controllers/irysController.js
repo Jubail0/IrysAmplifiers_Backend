@@ -46,7 +46,7 @@ function verifySignature(address, signature, message, expectedUsername) {
     const receipt = await irys.upload(JSON.stringify(jsonData), {
       tags: [
         { name: "content-Type", value: "application/json" },
-        { name: "application-id", value:"amplifiers"},
+        { name: "application-id", value:"1kYappers"},
         { name: "owner", value: walletAddress },
       ],
     });
@@ -99,7 +99,7 @@ export const fetchCardsData = async (req, res) => {
   try {
     const query = `
       query {
-        transactions(tags: [{ name: "application-id", values: ["amplifiers"] }]) {
+        transactions(tags: [{ name: "application-id", values: ["1kYappers"] }]) {
           edges {
             node {
               id
@@ -138,6 +138,7 @@ export default {
     fetchCardsData
 
 }
+
 
 
 
