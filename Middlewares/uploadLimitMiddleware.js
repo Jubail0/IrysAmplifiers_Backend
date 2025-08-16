@@ -7,7 +7,7 @@ export const checkUploadLimit = async(req,res,next) => {
       query {
         transactions(tags: [
         { name: "owner", values: ["${userAddress}"] },
-        { name: "application-id", values: ["amplifiers"] }
+        { name: "application-id", values: ["1kYappers"] }
          
         ]) {
           edges {
@@ -36,3 +36,4 @@ export const checkUploadLimit = async(req,res,next) => {
     }
 
 }
+
