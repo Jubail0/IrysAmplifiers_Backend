@@ -1,20 +1,54 @@
-// controllers/submitQuiz.js
-import jwt from "jsonwebtoken";
+// controllers/quizController.js
 import User from "../models/User.js";
 import Question from "../models/Question.js";
 
-function getUTCMidnight(date = new Date()) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-}
 
-export const submitQuiz = async (req, res) => {
+// Quiz start date (first day of quiz)
+const QUIZ_START_DATE = new Date("2025-08-18T00:00:00Z"); // UTC
+
+// Helper to get UTC midnight
+const getUTCMidnight = (date) => {
+  const d = new Date(date);
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+};
+
+/**
+ * 🔹 Get quiz status for user
+ */
+export const getQuizStatus = async (req, res) => {
   try {
-    const { answers } = req.body;
-    const token = req.headers.authorization?.split(" ")[1];
-    if (!token) return res.status(401).json({ error: "Not logged in" });
+    const { username } = req.user;
+    if (!username) return res.status(400).json({ error: "Username missing" });
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const username = decoded.username;
+    const user = await User.findOne({ username });
+    const nowUTC = new Date();
+    const todayMidnight = getUTCMidnight(nowUTC);
+
+    let locked = false;
+
+    if (user?.lastPlayed) {
+      const lastPlayedMidnight = getUTCMidnight(new Date(user.lastPlayed));
+      if (lastPlayedMidnight.getTime() === todayMidnight.getTime()) {
+        locked = true;
+      }
+    }
+
+    const nextBatchAvailable = new Date(todayMidnight);
+    nextBatchAvailable.setUTCDate(nextBatchAvailable.getUTCDate() + 1);
+
+    res.json({ locked, nextBatchAvailable });
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching quiz status", error: err.message });
+  }
+};
+
+/**
+ * 🔹 Get today's quiz questions
+ */
+export const getTodayQuestions = async (req, res) => {
+  try {
+    const { username } = req.user;
     if (!username) return res.status(400).json({ error: "Username missing" });
 
     let user = await User.findOne({ username });
@@ -26,75 +60,82 @@ export const submitQuiz = async (req, res) => {
         believer: false,
         lastPlayed: null,
         answeredQuestions: [],
-        todayBatch: 0,
       });
       await user.save();
     }
 
-    const now = new Date();
-    const todayUTC = getUTCMidnight(now);
+    const nowUTC = new Date();
+    const todayMidnight = getUTCMidnight(nowUTC);
 
-    // 🚫 Already submitted today?
+    // Check if user already played today
     if (user.lastPlayed) {
       const lastPlayedMidnight = getUTCMidnight(new Date(user.lastPlayed));
-      if (lastPlayedMidnight.getTime() === todayUTC.getTime()) {
-        const nextQuizAvailable = new Date(todayUTC);
-        nextQuizAvailable.setUTCDate(nextQuizAvailable.getUTCDate() + 1);
-        return res.status(400).json({
-          message: "Already submitted today. Come back tomorrow.",
+      if (lastPlayedMidnight.getTime() === todayMidnight.getTime()) {
+        const nextBatchAvailable = new Date(todayMidnight);
+        nextBatchAvailable.setUTCDate(nextBatchAvailable.getUTCDate() + 1);
+
+        return res.json({
           locked: true,
-          nextQuizAvailable,
+          message: "Quiz locked until next 00:00 UTC.",
+          nextBatchAvailable,
         });
       }
     }
 
-    // Fetch questions & grade
-    const questionIds = answers.map((a) => a.questionId);
-    const questions = await Question.find({ _id: { $in: questionIds } });
+    // Calculate batch number based on days since quiz start
+    const dayNumber =
+      Math.floor((todayMidnight - QUIZ_START_DATE) / (1000 * 60 * 60 * 24)) + 1;
 
-    let score = 0;
-    answers.forEach((a) => {
-      const q = questions.find((q) => q._id.toString() === a.questionId);
-      if (q && q.answer === a.selectedOption) score += 10;
-    });
+    const questions = await Question.find()
+      .sort({ _id: 1 }) // ensure consistent ordering
+      .skip((dayNumber - 1) * 5)
+      .limit(5);
 
-    // Update streak
-    let newStreak = 1;
-    if (user.lastPlayed) {
-      const yesterdayUTC = new Date(todayUTC);
-      yesterdayUTC.setUTCDate(todayUTC.getUTCDate() - 1);
-      const lastPlayedDate = getUTCMidnight(new Date(user.lastPlayed));
-      if (lastPlayedDate.getTime() === yesterdayUTC.getTime()) {
-        newStreak = user.streak + 1;
-      }
+    if (questions.length === 0) {
+      return res.status(404).json({ message: "No more questions available." });
     }
 
-    // ✅ Update user only here
-    user.score += score;
-    user.streak = newStreak;
-    user.lastPlayed = now;
-    user.todayBatch += 1;
-    user.believer = score >= 30;
-    user.answeredQuestions.push(...questionIds);
-    await user.save();
-
-    const nextQuizAvailable = new Date(todayUTC);
-    nextQuizAvailable.setUTCDate(todayUTC.getUTCDate() + 1);
+    const nextBatchAvailable = new Date(todayMidnight);
+    nextBatchAvailable.setUTCDate(nextBatchAvailable.getUTCDate() + 1);
 
     res.json({
-      message: "Score submitted successfully",
-      score,
-      locked: true, // locked after submission
-      nextQuizAvailable,
-      user: {
-        username: user.username,
-        score: user.score,
-        streak: user.streak,
-        believer: user.believer,
-      },
+      locked: false,
+      questions,
+      nextBatchAvailable,
     });
   } catch (err) {
-    console.error("Quiz submission error:", err);
-    res.status(500).json({ error: "Quiz submission failed" });
+    res.status(500).json({ message: "Error fetching questions", error: err.message });
   }
 };
+
+/**
+ * 🔹 Admin: add new question
+ */
+export const addQuestion = async (req, res) => {
+  try {
+    const data = req.body; // could be a single object or an array
+
+    if (Array.isArray(data)) {
+      // Bulk insert
+      const newQuestions = await Question.insertMany(data);
+      res.json({
+        message: `${newQuestions.length} questions added successfully`,
+        questions: newQuestions,
+      });
+    } else {
+      // Single insert
+      const { question, options, answer } = data;
+      const newQuestion = new Question({ question, options, answer });
+      await newQuestion.save();
+      res.json({
+        message: "Question added successfully",
+        question: newQuestion,
+      });
+    }
+  } catch (err) {
+    res
+      .status(500)
+      .json({ message: "Error adding question(s)", error: err.message });
+  }
+};
+
