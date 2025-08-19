@@ -1,47 +1,20 @@
-// controllers/quizController.js
+// controllers/submitQuiz.js
+import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import Question from "../models/Question.js";
 
-// Helper: today's UTC midnight
 function getUTCMidnight(date = new Date()) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 
-/**
- * 🔹 Get quiz status
- */
-export const getQuizStatus = async (req, res) => {
+export const submitQuiz = async (req, res) => {
   try {
-    const { username } = req.user;
-    if (!username) return res.status(400).json({ error: "Username missing" });
+    const { answers } = req.body;
+    const token = req.headers.authorization?.split(" ")[1];
+    if (!token) return res.status(401).json({ error: "Not logged in" });
 
-    const user = await User.findOne({ username });
-    const nowUTC = new Date();
-    const todayMidnight = getUTCMidnight(nowUTC);
-
-    let locked = false;
-    let nextBatchAvailable = new Date(todayMidnight);
-    nextBatchAvailable.setUTCDate(nextBatchAvailable.getUTCDate() + 1);
-
-    if (user?.lastPlayed) {
-      const lastPlayedMidnight = getUTCMidnight(new Date(user.lastPlayed));
-      if (lastPlayedMidnight.getTime() === todayMidnight.getTime()) {
-        locked = true;
-      }
-    }
-
-    res.json({ locked, nextBatchAvailable });
-  } catch (err) {
-    res.status(500).json({ message: "Error fetching quiz status", error: err.message });
-  }
-};
-
-/**
- * 🔹 Get today's quiz questions
- */
-export const getTodayQuestions = async (req, res) => {
-  try {
-    const { username } = req.user;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const username = decoded.username;
     if (!username) return res.status(400).json({ error: "Username missing" });
 
     let user = await User.findOne({ username });
@@ -58,73 +31,70 @@ export const getTodayQuestions = async (req, res) => {
       await user.save();
     }
 
-    const nowUTC = new Date();
-    const todayMidnight = getUTCMidnight(nowUTC);
+    const now = new Date();
+    const todayUTC = getUTCMidnight(now);
 
-    // 🚫 If already played today → locked
+    // 🚫 Already submitted today?
     if (user.lastPlayed) {
       const lastPlayedMidnight = getUTCMidnight(new Date(user.lastPlayed));
-      if (lastPlayedMidnight.getTime() === todayMidnight.getTime()) {
-        const nextBatchAvailable = new Date(todayMidnight);
-        nextBatchAvailable.setUTCDate(nextBatchAvailable.getUTCDate() + 1);
-
-        return res.json({
+      if (lastPlayedMidnight.getTime() === todayUTC.getTime()) {
+        const nextQuizAvailable = new Date(todayUTC);
+        nextQuizAvailable.setUTCDate(nextQuizAvailable.getUTCDate() + 1);
+        return res.status(400).json({
+          message: "Already submitted today. Come back tomorrow.",
           locked: true,
-          message: "Quiz locked until next 00:00 UTC.",
-          nextBatchAvailable,
+          nextQuizAvailable,
         });
       }
     }
 
-    // ✅ Do NOT set lastPlayed here. That happens in submitQuiz.
-    const batch = user.todayBatch + 1;
+    // Fetch questions & grade
+    const questionIds = answers.map((a) => a.questionId);
+    const questions = await Question.find({ _id: { $in: questionIds } });
 
-    const questions = await Question.find()
-      .sort({ date: 1 })
-      .skip((batch - 1) * 5)
-      .limit(5);
+    let score = 0;
+    answers.forEach((a) => {
+      const q = questions.find((q) => q._id.toString() === a.questionId);
+      if (q && q.answer === a.selectedOption) score += 10;
+    });
 
-    if (questions.length === 0) {
-      return res.status(404).json({ message: "No more questions available." });
+    // Update streak
+    let newStreak = 1;
+    if (user.lastPlayed) {
+      const yesterdayUTC = new Date(todayUTC);
+      yesterdayUTC.setUTCDate(todayUTC.getUTCDate() - 1);
+      const lastPlayedDate = getUTCMidnight(new Date(user.lastPlayed));
+      if (lastPlayedDate.getTime() === yesterdayUTC.getTime()) {
+        newStreak = user.streak + 1;
+      }
     }
 
-    const nextBatchAvailable = new Date(todayMidnight);
-    nextBatchAvailable.setUTCDate(nextBatchAvailable.getUTCDate() + 1);
+    // ✅ Update user only here
+    user.score += score;
+    user.streak = newStreak;
+    user.lastPlayed = now;
+    user.todayBatch += 1;
+    user.believer = score >= 30;
+    user.answeredQuestions.push(...questionIds);
+    await user.save();
 
-    res.json({ locked: false, questions, nextBatchAvailable });
+    const nextQuizAvailable = new Date(todayUTC);
+    nextQuizAvailable.setUTCDate(todayUTC.getUTCDate() + 1);
+
+    res.json({
+      message: "Score submitted successfully",
+      score,
+      locked: true, // locked after submission
+      nextQuizAvailable,
+      user: {
+        username: user.username,
+        score: user.score,
+        streak: user.streak,
+        believer: user.believer,
+      },
+    });
   } catch (err) {
-    res.status(500).json({ message: "Error fetching questions", error: err.message });
+    console.error("Quiz submission error:", err);
+    res.status(500).json({ error: "Quiz submission failed" });
   }
 };
-
-/**
- * 🔹 Admin: add new question
- */
-export const addQuestion = async (req, res) => {
-  try {
-    const data = req.body; // could be a single object or an array
-
-    if (Array.isArray(data)) {
-      // Bulk insert
-      const newQuestions = await Question.insertMany(data);
-      res.json({
-        message: `${newQuestions.length} questions added successfully`,
-        questions: newQuestions,
-      });
-    } else {
-      // Single insert
-      const { question, options, answer } = data;
-      const newQuestion = new Question({ question, options, answer });
-      await newQuestion.save();
-      res.json({
-        message: "Question added successfully",
-        question: newQuestion,
-      });
-    }
-  } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Error adding question(s)", error: err.message });
-  }
-};
-
