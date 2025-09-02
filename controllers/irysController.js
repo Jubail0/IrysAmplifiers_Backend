@@ -9,7 +9,7 @@ dotenv.config();
 const irys = await Uploader(Ethereum)
   .withWallet(process.env.PRIVATE_KEY)
   .withRpc(process.env.RPC_URL)
-  .devnet();
+  // .devnet();
 
 
 function verifySignature(address, signature, message, expectedUsername) {
@@ -110,7 +110,7 @@ export const fetchCardsData = async (req, res) => {
     `;
 
     const listResponse = await axios.post(
-      "https://devnet.irys.xyz/graphql",
+      "https://uploader.irys.xyz/graphql",
       { query },
       { headers: { "Content-Type": "application/json" } }
     );
@@ -138,6 +138,7 @@ export default {
     fetchCardsData
 
 }
+
 
 
 
