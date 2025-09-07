@@ -9,6 +9,12 @@ function getUTCMidnight(date = new Date()) {
 
 export const submitQuiz = async (req, res) => {
   try {
+ const maintenanceMode = true;
+  
+  if (maintenanceMode) {
+    // Stop request here, send response
+    return res.status(503).json({ message: "🚧 Quiz is under maintenance" });
+  }
     const { answers } = req.body;
     const token = req.headers.authorization?.split(" ")[1];
     if (!token) return res.status(401).json({ error: "Not logged in" });
@@ -98,3 +104,4 @@ export const submitQuiz = async (req, res) => {
     res.status(500).json({ error: "Quiz submission failed" });
   }
 };
+
