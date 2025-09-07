@@ -18,6 +18,13 @@ const getUTCMidnight = (date) => {
  */
 export const getQuizStatus = async (req, res) => {
   try {
+  const maintenanceMode = true;
+  
+  if (maintenanceMode) {
+    // Stop request here, send response
+    return res.status(503).json({ message: "🚧 Quiz is under maintenance" });
+  }
+
     const { username } = req.user;
     if (!username) return res.status(400).json({ error: "Username missing" });
 
@@ -138,4 +145,5 @@ export const addQuestion = async (req, res) => {
       .json({ message: "Error adding question(s)", error: err.message });
   }
 };
+
 
