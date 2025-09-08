@@ -3,7 +3,7 @@ import User from "../models/User.js";
 // Get Top Leaderboard
 export const getLeaderboard = async (req, res) => {
   try {
- const maintenanceMode = true;
+ const maintenanceMode = false;
   
   if (maintenanceMode) {
     // Stop request here, send response
@@ -33,4 +33,5 @@ export const getUserRank = async (req, res) => {
     res.status(500).json({ error: "User rank fetch failed" });
   }
 };
+
 
