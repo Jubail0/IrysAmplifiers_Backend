@@ -4,7 +4,7 @@ import Question from "../models/Question.js";
 
 
 // Quiz start date (first day of quiz)
-const QUIZ_START_DATE = new Date("2025-08-18T00:00:00Z"); // UTC
+const QUIZ_START_DATE = new Date("2025-09-07T18:19:57.467Z");
 
 // Helper to get UTC midnight
 const getUTCMidnight = (date) => {
@@ -18,7 +18,7 @@ const getUTCMidnight = (date) => {
  */
 export const getQuizStatus = async (req, res) => {
   try {
-  const maintenanceMode = true;
+  const maintenanceMode = false;
   
   if (maintenanceMode) {
     // Stop request here, send response
@@ -145,5 +145,6 @@ export const addQuestion = async (req, res) => {
       .json({ message: "Error adding question(s)", error: err.message });
   }
 };
+
 
 
